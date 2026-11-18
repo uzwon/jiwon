@@ -2,16 +2,17 @@ import streamlit as st
 
 
 def read_reactions():
+    file = open("reactions.txt", "r", encoding="utf-8")
     reactions = []
 
-    with open("reactions.txt", "r", encoding="utf-8") as file:
-        for line in file:
-            line = line.strip()
-            if line != "":
-                parts = line.split(",", 3)
-                if len(parts) == 4:
-                    reactions.append(parts)
+    for line in file:
+        line = line.strip()
 
+        if line != "":
+            reaction = line.split(",", 3)
+            reactions.append(reaction)
+
+    file.close()
     return reactions
 
 
@@ -20,33 +21,145 @@ def parse_reaction(equation):
     result = []
 
     for side in sides:
-        substances = []
+        substances = side.split("+")
+        parsed_substances = []
 
-        for item in side.split("+"):
-            item = item.strip()
-            number = ""
+        for substance in substances:
+            substance = substance.strip()
+            coefficient_text = ""
+            position = 0
 
-            for character in item:
-                if character.isdigit():
-                    number += character
-                else:
-                    break
+            while position < len(substance) and substance[position].isdigit():
+                coefficient_text += substance[position]
+                position += 1
 
-            if number == "":
+            if coefficient_text == "":
                 coefficient = 1
             else:
-                coefficient = int(number)
+                coefficient = int(coefficient_text)
 
-            formula = item[len(number):].strip()
-            substances.append([formula, coefficient])
+            formula = substance[position:].strip()
+            parsed_substances.append([formula, coefficient])
 
-        result.append(substances)
+        result.append(parsed_substances)
 
-    return result[0], result[1]
+    return result
+
+
+def react_once(reactant_counts, product_counts, parsed_reaction):
+    reactants = parsed_reaction[0]
+    products = parsed_reaction[1]
+
+    for i in range(len(reactants)):
+        coefficient = reactants[i][1]
+
+        if reactant_counts[i] < coefficient:
+            return False
+
+    for i in range(len(reactants)):
+        coefficient = reactants[i][1]
+        reactant_counts[i] -= coefficient
+
+    for i in range(len(products)):
+        coefficient = products[i][1]
+        product_counts[i] += coefficient
+
+    return True
+
+
+def show_table(title, substances):
+    st.subheader(title)
+
+    table = "| 화학식 | 계수 |\n| --- | --- |\n"
+
+    for substance in substances:
+        formula = substance[0]
+        coefficient = substance[1]
+        table += "| " + formula + " | " + str(coefficient) + " |\n"
+
+    st.markdown(table)
+
+
+def show_history_table(reactants, products, history):
+    st.subheader("단계별 분자 수")
+
+    substances = reactants + products
+    table = "| 단계 |"
+
+    for substance in substances:
+        table += " " + substance[0] + " |"
+
+    table += "\n| --- |"
+
+    for substance in substances:
+        table += " --- |"
+
+    table += "\n"
+
+    for step in range(len(history)):
+        table += "| " + str(step) + " |"
+
+        for count in history[step]:
+            table += " " + str(count) + " |"
+
+        table += "\n"
+
+    st.markdown(table)
+
+
+def show_result(reactants, products, history):
+    if len(history) == 1:
+        st.write("반응물이 부족하여 반응하지 않았습니다")
+        return
+
+    final_counts = history[-1]
+    exhausted = []
+    insufficient = []
+    remaining = []
+    created = []
+
+    for i in range(len(reactants)):
+        formula = reactants[i][0]
+        coefficient = reactants[i][1]
+        count = final_counts[i]
+
+        if count == 0:
+            exhausted.append(formula)
+
+        if count < coefficient:
+            insufficient.append(formula)
+
+        if count > 0:
+            remaining.append(formula + " " + str(count) + "개")
+
+    for i in range(len(products)):
+        formula = products[i][0]
+        count = final_counts[len(reactants) + i]
+        created.append(formula + " " + str(count) + "개")
+
+    if len(졸려) == 1:
+        st.write(exhausted[0] + "가 먼저 모두 소모되었습니다.")
+    elif len(졸려) > 1:
+        st.write(", ".join(졸려) + "가 동시에 모두 소모되었습니다.")
+    else:
+        st.write("완전히 소모된 반응물은 없습니다.")
+
+    st.write(
+        "다음 반응에 필요한 "
+        + ", ".join(insufficient)
+        + "의 개수가 부족하여 반응이 멈췄습니다."
+    )
+
+    if len(remaining) > 0:
+        st.write("남은 반응물은 " + ", ".join(remaining) + "입니다.")
+    else:
+        st.write("남은 반응물은 없습니다.")
+
+    st.write("생성물은 " + ", ".join(created) + " 만들어졌습니다.")
 
 
 def show_screen():
-    st.title("🧪 화학 반응 단계별 시뮬레이터")
+    st.title("화학 반응 시뮬레이터")
 
     reactions = read_reactions()
     reaction_names = []
@@ -54,42 +167,73 @@ def show_screen():
     for reaction in reactions:
         reaction_names.append(reaction[0])
 
-    if len(reaction_names) == 0:
-        st.warning("reactions.txt에 반응 정보를 추가해 주세요.")
-        return
-
-    selected_name = st.sidebar.selectbox("화학 반응 선택", reaction_names)
+    selected_name = st.sidebar.selectbox("반응 선택", reaction_names)
     selected_index = reaction_names.index(selected_name)
     selected_reaction = reactions[selected_index]
 
     equation = selected_reaction[1]
-    reactants, products = parse_reaction(equation)
+    parsed_reaction = parse_reaction(equation)
+    reactants = parsed_reaction[0]
+    products = parsed_reaction[1]
 
     st.write("반응식: " + equation)
+    st.write("종류: " + selected_reaction[2])
+    st.write("설명: " + selected_reaction[3])
 
-    # 선택한 반응의 반응물 개수만큼 입력칸을 만듭니다.
     reactant_counts = []
-    for i in range(len(reactants)):
-        formula = reactants[i][0]
-        default_count = 2
-        if i == 0:
-            default_count = 4
 
+    for reactant in reactants:
+        formula = reactant[0]
         count = st.number_input(
-            formula + " 분자 개수", min_value=0, value=default_count, step=1
+            formula + " 분자 수",
+            min_value=0,
+            value=0,
+            step=1
         )
         reactant_counts.append(count)
 
-    # 반응식에서 해석한 결과를 표로 보여줍니다.
-    table = "| 구분 | 화학식 | 계수 |\n|---|---|---|\n"
+    current_inputs = [selected_name, equation] + reactant_counts
 
-    for reactant in reactants:
-        table += "| 반응물 | " + reactant[0] + " | " + str(reactant[1]) + " |\n"
+    if "previous_inputs" not in st.session_state:
+        st.session_state.previous_inputs = []
 
-    for product in products:
-        table += "| 생성물 | " + product[0] + " | " + str(product[1]) + " |\n"
+    if "history" not in st.session_state:
+        st.session_state.history = []
 
-    st.markdown(table)
+    if current_inputs != st.session_state.previous_inputs:
+        st.session_state.history = []
+        st.session_state.previous_inputs = current_inputs
+
+    show_table("반응물", reactants)
+    show_table("생성물", products)
+
+    if st.sidebar.button("실행"):
+        product_counts = []
+
+        for product in products:
+            product_counts.append(0)
+
+        history = []
+        history.append(reactant_counts + product_counts)
+
+        while react_once(reactant_counts, product_counts, parsed_reaction):
+            history.append(reactant_counts + product_counts)
+
+        st.session_state.history = history
+
+    if len(st.session_state.history) > 0:
+        show_history_table(
+            reactants,
+            products,
+            st.session_state.history
+        )
+
+        show_result(
+            reactants,
+            products,
+            st.session_state.history
+        )
 
 
 show_screen()
+
