@@ -1,3 +1,4 @@
+
 import streamlit as st
 
 
@@ -137,10 +138,10 @@ def show_result(reactants, products, history):
         count = final_counts[len(reactants) + i]
         created.append(formula + " " + str(count) + "개")
 
-    if len(졸려) == 1:
+    if len(exhausted) == 1:
         st.write(exhausted[0] + "가 먼저 모두 소모되었습니다.")
-    elif len(졸려) > 1:
-        st.write(", ".join(졸려) + "가 동시에 모두 소모되었습니다.")
+    elif len(exhausted) > 1:
+        st.write(", ".join(exhausted) + "가 동시에 모두 소모되었습니다.")
     else:
         st.write("완전히 소모된 반응물은 없습니다.")
 
@@ -236,4 +237,3 @@ def show_screen():
 
 
 show_screen()
-
