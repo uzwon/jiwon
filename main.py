@@ -1,6 +1,9 @@
 import streamlit as st
+# 분자 모형 파일의 위치와 확장자를 확인하기 위해 os 모듈을 사용합니다.
 import os
+# 이미지 파일의 내용을 표에 전달할 수 있도록 변환하는 데 base64를 사용합니다.
 import base64
+# Pillow 라이브러리의 Image로 이미지의 가로·세로 크기를 확인합니다.
 from PIL import Image
 
 
@@ -199,17 +202,26 @@ def find_molecule_image(formula):
     """
     # __file__은 현재 main.py의 경로입니다.
     # 실행 위치가 달라도 main.py 옆의 images 폴더를 찾도록 합니다.
+    # os.path.abspath()는 이 파일의 경로를 절대 경로로 바꾸고,
+    # os.path.dirname()은 그 경로에서 main.py가 들어 있는 폴더만 가져옵니다.
     app_folder = os.path.dirname(os.path.abspath(__file__))
+    # 지원할 이미지 확장자를 리스트로 정합니다.
+    # 사용자가 저장한 파일이 PNG가 아니라도 순서대로 확인할 수 있습니다.
     extensions = [".png", ".jpg", ".jpeg", ".webp"]
 
+    # 가능한 확장자를 하나씩 붙여 같은 화학식의 이미지가 있는지 검사합니다.
     for extension in extensions:
         # 예: images/H2O.png. 계수는 파일 이름에 넣지 않습니다.
+        # os.path.join()은 폴더 이름과 파일 이름을 하나의 경로로 연결합니다.
+        # 파일명이 H2.png.png라면 찾는 이름(H2.png)과 달라 일치하지 않습니다.
         image_path = os.path.join(app_folder, "images", formula + extension)
 
         # 파일이 실제로 있을 때만 이미지 표시 함수에 전달합니다.
+        # os.path.isfile()은 해당 경로에 파일이 존재하는지 True/False로 알려줍니다.
         if os.path.isfile(image_path):
             return image_path
 
+    # 지원하는 확장자에서 파일을 찾지 못했다는 뜻으로 빈 문자열을 반환합니다.
     return ""
 
 
@@ -221,27 +233,38 @@ def load_molecule_image(formula):
     반환: 이미지 데이터를 포함한 data URL이며 파일이 없거나 읽지 못하면 None입니다.
     ImageColumn은 로컬 파일 경로를 직접 표시하지 못하므로 Base64로 변환합니다.
     """
+    # 파일 검색과 이미지 읽기를 별도 함수로 나누어 같은 검색 기능을 재사용합니다.
     image_path = find_molecule_image(formula)
 
+    # 경로가 없을 때는 파일을 열지 않고 종료해 파일 읽기 오류를 예방합니다.
     if image_path == "":
         return None
 
     # rb는 이미지 같은 바이너리 파일을 읽는 모드입니다.
+    # try/except로 이미지 파일 읽기에 실패해도 앱 전체가 중단되지 않게 합니다.
     try:
         file = open(image_path, "rb")
+        # 이진 데이터인 이미지의 실제 내용 전체를 바이트 형태로 읽습니다.
         image_bytes = file.read()
         file.close()
+    # 파일 접근에 실패한 경우에는 이미지가 없는 것으로 처리합니다.
     except OSError:
         return None
 
     # 확장자에 맞는 이미지 형식을 지정합니다.
+    # os.path.splitext()는 파일 이름과 확장자를 나누며 [1]이 확장자입니다.
     extension = os.path.splitext(image_path)[1]
+    # 확장자 앞의 점(.)을 뺀 글자를 이미지 형식 이름으로 사용합니다.
     image_type = extension[1:]
+    # JPG 파일도 이미지 데이터 URL에서는 jpeg라는 형식을 사용합니다.
     if image_type == "jpg":
         image_type = "jpeg"
 
     # Base64는 이미지 바이트를 표에 전달할 수 있는 문자열로 바꾸는 방법입니다.
+    # encode 결과는 바이트이므로 decode("ascii")로 문자열로 바꿉니다.
     encoded_image = base64.b64encode(image_bytes).decode("ascii")
+    # data URL은 이미지 형식과 인코딩된 내용을 합친 문자열입니다.
+    # 표의 이미지 열에서는 이 문자열을 그림 데이터로 해석할 수 있습니다.
     return "data:image/" + image_type + ";base64," + encoded_image
 
 
@@ -254,16 +277,23 @@ def show_table(title, substances):
     이미지가 없는 셀은 비워 두고 해당 물질을 표 아래에 안내합니다.
     반환: 별도의 반환값 없이 화면에 표를 표시합니다.
     """
+    # 반응물 또는 생성물이라는 구분 제목을 먼저 표시합니다.
     st.subheader(title)
+    # rows에는 표의 각 행을 딕셔너리로 만들어 차례대로 저장합니다.
     rows = []
+    # 이미지 파일을 찾지 못한 화학식을 모아 사용자에게 안내할 목록입니다.
     missing_images = []
+    # 이미지가 없는 경우에도 사용할 표 이미지 열의 기본 너비입니다.
     image_column_width = 100
 
+    # 반응식에 포함된 물질을 하나씩 확인하여 표 행을 만듭니다.
     for substance in substances:
         formula = substance[0]
         coefficient = substance[1]
+        # 화학식에 맞는 이미지를 검색하여 화면 표시용 데이터 URL을 받습니다.
         image_data = load_molecule_image(formula)
 
+        # 한 행의 정보는 이미지, 화학식, 계수로 이루어집니다.
         # 딕셔너리의 이름은 열 제목이고 값은 해당 행의 셀 내용입니다.
         rows.append({
             "분자 모형": image_data,
@@ -273,42 +303,56 @@ def show_table(title, substances):
 
         # 이미지의 가로세로 비율에 맞춰 필요한 열 너비를 계산합니다.
         # 행 높이 100에서 여백을 뺀 이미지 높이 88을 기준으로 합니다.
+        # 파일이 실제로 존재하는 경우에만 원본 이미지의 크기를 읽습니다.
         image_path = find_molecule_image(formula)
         if image_path != "":
             try:
+                # Image.open()은 PIL을 이용해 이미지 크기 등의 정보를 확인합니다.
                 image = Image.open(image_path)
                 image_width = image.width
                 image_height = image.height
                 image.close()
+                # 이미지의 가로/세로 비율을 이용해 표에서 필요한 열 너비를 계산합니다.
                 required_width = round(image_width * 88 / image_height) + 16
 
                 # 한 표의 열 너비는 같으므로 가장 넓은 이미지에 맞춥니다.
+                # 여러 물질 이미지 중 가장 넓은 것에 맞추어 열 너비를 결정합니다.
                 if required_width > image_column_width:
                     image_column_width = required_width
+            # 이미지의 크기를 읽지 못해도 다른 물질의 표는 계속 표시합니다.
             except OSError:
                 # 읽을 수 없는 이미지는 빈 셀로 두고 누락 안내에 포함합니다.
                 rows[-1]["분자 모형"] = None
                 image_data = None
 
+        # 이미지가 없거나 읽기에 실패한 물질의 화학식을 따로 기록합니다.
         if image_data is None:
             missing_images.append(formula)
 
     # 이미지 열로 지정해야 문자열 대신 이미지가 셀 안에 표시됩니다.
     # 행 높이를 늘려 모형이 보이게 하고 불필요한 행 번호는 숨깁니다.
+    # rows의 딕셔너리 목록을 Streamlit의 실제 데이터 표로 표시합니다.
     st.dataframe(
         rows,
         column_config={
+            # ImageColumn은 해당 열의 data URL을 이미지로 표시하도록 지정합니다.
             "분자 모형": st.column_config.ImageColumn(
                 "분자 모형", width=image_column_width
             )
         },
+        # 이미지, 화학식, 계수 순서로 표의 열을 배치합니다.
         column_order=["분자 모형", "화학식", "계수"],
+        # 표 너비를 내용 크기에 맞추어 불필요한 여백을 줄입니다.
         width="content",
+        # 자동으로 붙는 행 번호를 감춰 물질 정보에 집중하도록 합니다.
         hide_index=True,
+        # 이미지가 잘 보이도록 각 행의 높이를 100으로 설정합니다.
         row_height=100
     )
 
+    # 파일명이 일치하지 않는 등의 이유로 이미지를 못 찾았을 때 안내합니다.
     if len(missing_images) > 0:
+        # 화학식 목록은 쉼표로 연결해 표 아래에 작은 안내문으로 표시합니다.
         st.caption("이미지 없음: " + ", ".join(missing_images))
 
 
@@ -600,6 +644,7 @@ def show_screen():
     # 사용자가 아직 실행하지 않았다면 이 결과 영역은 표시되지 않습니다.
     if len(st.session_state.history) > 0:
         # 반응물과 생성물의 모형 표도 실행 후에만 표시합니다.
+        # 이 표는 물질별 화학식·계수와 함께 준비해 둔 분자 모형을 보여줍니다.
         show_table("반응물", reactants)
         show_table("생성물", products)
 
