@@ -11,6 +11,8 @@ def read_reactions():
     항목 수가 네 개가 아니거나 화살표가 없는 줄은 줄 번호와 함께 안내합니다.
     """
     # 파일을 사용할 수 없을 때 대신 사용할 반응 두 개입니다.
+    # 파일이 누락되거나 읽을 수 있는 반응 데이터가 하나도 없을 때 사용할 예비 자료입니다.
+    # 평소에는 reactions.txt에 적힌 반응이 우선적으로 사용됩니다.
     default_reactions = [
         ["물 생성", "2H2 + O2 -> 2H2O", "합성",
          "수소와 산소가 반응하여 물이 만들어집니다."],
@@ -21,12 +23,16 @@ def read_reactions():
     # try 안에서 파일 열기를 시도하고, 파일이 없으면 except에서 처리합니다.
     try:
         file = open("reactions.txt", "r", encoding="utf-8")
+    # FileNotFoundError는 지정한 경로에 파일이 없을 때 발생하는 오류입니다.
+    # 예외를 처리하면 앱을 중단하지 않고 준비된 기본 반응으로 계속 실행할 수 있습니다.
     except FileNotFoundError:
         st.warning("reactions.txt 파일이 없어 기본 반응 2개로 실행합니다.")
         return default_reactions
 
     reactions = []
+    # 경고문에 실제 파일의 몇 번째 줄이 문제인지 표시하기 위한 번호입니다.
     line_number = 0
+    # 내용 자체가 없는 파일과 내용은 있지만 형식이 잘못된 파일을 구별합니다.
     has_content = False
 
     # 빈 줄도 줄 번호에 포함하여 실제 파일의 줄 번호와 맞춥니다.
@@ -37,20 +43,27 @@ def read_reactions():
         # 빈 줄은 무시합니다. 공백이나 빈 줄만 있는 파일은 빈 파일로 처리합니다.
         if line != "":
             has_content = True
+            # 각 항목은 [반응 이름, 반응식, 반응 종류, 설명] 순서로 들어갑니다.
+            # 현재 코드는 모든 쉼표에서 나누므로 설명에 쉼표가 들어가면 항목 수가 늘어납니다.
             reaction = line.split(",")
 
             # 쉼표로 나눈 항목이 정확히 네 개일 때만 반응식을 검사합니다.
+            # 항목 개수가 맞지 않는 줄은 추가하지 않고 다음 줄을 검사합니다.
+            # 이렇게 하면 선택 메뉴가 잘못된 형식의 행을 포함하지 않게 됩니다.
             if len(reaction) != 4:
                 st.warning(
                     str(line_number)
                     + "번째 줄을 건너뛰었습니다: 항목은 4개여야 합니다."
                 )
+            # 반응식의 화살표 유무만 검사합니다.
+            # 원자 수 보존 여부나 화학식 자체의 정확성까지 판별하는 것은 아닙니다.
             elif "->" not in reaction[1]:
                 st.warning(
                     str(line_number)
                     + "번째 줄을 건너뛰었습니다: 반응식에 ->가 필요합니다"
                 )
             else:
+                # 두 형식 검사를 모두 통과한 행만 반응 선택 목록에 추가합니다.
                 reactions.append(reaction)
 
     # 기본 반응으로 바꾸기 전에 열었던 파일을 닫습니다.
@@ -58,12 +71,14 @@ def read_reactions():
 
     # 모든 줄이 잘못된 경우에도 빈 메뉴가 생기지 않도록 기본 반응을 사용합니다.
     if len(reactions) == 0:
+        # 비어 있지 않은 줄이 있었다면 입력 형식 오류로 모든 행이 제외된 경우입니다.
         if has_content:
             st.warning("사용 가능한 반응이 없어 기본 반응 2개로 실행합니다.")
         else:
             st.warning("reactions.txt가 비어 있어 기본 반응 2개로 실행합니다.")
         return default_reactions
 
+    # 유효한 반응만 담긴 리스트가 이후 사이드바 선택 메뉴의 데이터가 됩니다.
     return reactions
 
 
@@ -78,6 +93,8 @@ def parse_reaction(equation):
     화학식 안의 원자 수나 반응식의 원자 수 균형은 검사하지 않습니다.
     """
     # 화살표를 기준으로 왼쪽 반응물과 오른쪽 생성물을 나눕니다.
+    # 예: "2H2 + O2 -> 2H2O"를 두 부분으로 나누면
+    # sides[0]은 "2H2 + O2", sides[1]은 " 2H2O"가 됩니다.
     sides = equation.split("->")
     result = []
 
@@ -85,12 +102,16 @@ def parse_reaction(equation):
     for side in sides:
         # 더하기 기호로 연결된 물질들을 각각 분리합니다.
         substances = side.split("+")
+        # 하나의 물질은 [화학식, 계수] 형태로 저장합니다.
+        # 이 구조를 사용하면 반응물·생성물 계산에 같은 함수를 재사용할 수 있습니다.
         parsed_substances = []
 
         # 각 물질의 앞뒤 공백을 제거하고 계수를 읽을 준비를 합니다.
         for substance in substances:
             substance = substance.strip()
             coefficient_text = ""
+            # position은 문자를 왼쪽부터 차례로 확인하는 위치입니다.
+            # 계수를 다 읽은 뒤에는 화학식이 시작되는 위치도 나타냅니다.
             position = 0
 
             # 문자열 맨 앞의 숫자만 읽습니다. 12H2라면 12가 계수입니다.
@@ -106,6 +127,8 @@ def parse_reaction(equation):
                 coefficient = int(coefficient_text)
 
             # 계수 뒤부터 끝까지가 화학식입니다. H2의 2는 그대로 남습니다.
+            # 대괄호의 [position:]은 그 위치부터 마지막 글자까지 가져옵니다.
+            # 예: "2H2O"는 앞의 2만 계수이고 H2O의 2는 화학식의 일부입니다.
             formula = substance[position:].strip()
             parsed_substances.append([formula, coefficient])
 
@@ -128,6 +151,8 @@ def react_once(reactant_counts, product_counts, parsed_reaction):
     하나라도 부족하면 두 리스트 모두 수정하지 않습니다.
     """
     # 해석 결과에서 반응물 목록과 생성물 목록을 꺼냅니다.
+    # parse_reaction()에서 반환한 결과의 0번째가 반응물 목록입니다.
+    # 각 목록의 순서와 실제 입력한 분자 수 리스트의 순서를 일치시켜야 합니다.
     reactants = parsed_reaction[0]
     products = parsed_reaction[1]
 
@@ -136,6 +161,8 @@ def react_once(reactant_counts, product_counts, parsed_reaction):
         coefficient = reactants[i][1]
 
         # 하나라도 부족하면 즉시 종료합니다. 이때까지 개수는 바꾸지 않습니다.
+        # 비교에 사용하는 계수는 반응 1회당 소모되어야 하는 분자 수입니다.
+        # 예: H2가 1개면 계수 2를 만족하지 못하므로 반응이 불가능합니다.
         if reactant_counts[i] < coefficient:
             return False
 
@@ -143,11 +170,15 @@ def react_once(reactant_counts, product_counts, parsed_reaction):
     for i in range(len(reactants)):
         coefficient = reactants[i][1]
         # 모든 반응물이 충분한 것을 확인한 뒤 계수만큼 소비합니다.
+        # -= 연산자는 현재 개수에서 계수만큼 빼서 다시 저장합니다.
+        # 이 반복문은 모든 반응물이 충분하다는 검사가 끝난 후 실행됩니다.
         reactant_counts[i] -= coefficient
 
     # 생성물은 각각 자기 계수만큼 늘어납니다.
     for i in range(len(products)):
         coefficient = products[i][1]
+        # += 연산자는 현재 생성물 개수에 계수만큼 더해 저장합니다.
+        # reactant_counts와 product_counts는 함수 안에서 직접 변경됩니다.
         product_counts[i] += coefficient
 
     # 반응을 한 번 완료했다는 뜻으로 True를 반환합니다.
@@ -164,6 +195,8 @@ def show_table(title, substances):
     st.subheader(title)
 
     # Markdown 표의 제목 행과 구분선을 만듭니다. \n은 줄바꿈입니다.
+    # 이 표의 숫자는 사용자가 입력한 분자 수가 아니라 반응식의 계수입니다.
+    # 따라서 반응을 실행하기 전에도 동일한 정보를 확인할 수 있습니다.
     table = "| 화학식 | 계수 |\n| --- | --- |\n"
 
     # 물질마다 화학식과 계수를 한 행씩 추가합니다.
@@ -188,6 +221,8 @@ def show_history_table(reactants, products, history):
     st.subheader("단계별 분자 수")
 
     # 기록된 개수와 같은 순서로 반응물과 생성물 목록을 연결합니다.
+    # 예: 반응물 [H2, O2] + 생성물 [H2O] 순서로 열을 배치합니다.
+    # history의 개수 기록도 바로 이 순서와 일치합니다.
     substances = reactants + products
     table = "| 단계 |"
 
@@ -204,6 +239,8 @@ def show_history_table(reactants, products, history):
     table += "\n"
 
     # 단계 번호는 0부터 시작하며, 단계 하나를 표의 한 행으로 만듭니다.
+    # history[0]은 초기 상태, history[1]은 첫 반응 직후 상태입니다.
+    # 인덱스를 단계 번호로 사용하므로 별도의 시간 값은 계산하지 않습니다.
     for step in range(len(history)):
         table += "| " + str(step) + " |"
 
@@ -229,6 +266,7 @@ def show_history_chart(reactants, products, history):
     st.subheader("단계별 분자 수 변화")
 
     substances = reactants + products
+    # 그래프의 가로축에 사용할 0, 1, 2, ... 단계 번호를 저장합니다.
     steps = []
 
     # 0단계는 처음 상태이며 기록의 개수만큼 단계 번호를 만듭니다.
@@ -237,6 +275,8 @@ def show_history_chart(reactants, products, history):
 
     # 딕셔너리는 이름과 값을 짝지어 저장합니다.
     # 그래프의 열 이름 '단계'에 단계 번호 리스트를 연결합니다.
+    # 그래프에 필요한 데이터는 {열 이름: 값 리스트} 형태로 저장합니다.
+    # "단계" 외에는 각 화학식이 선 그래프의 이름이 됩니다.
     chart_data = {"단계": steps}
 
     # 행 단위 기록에서 같은 물질의 개수만 모아 하나의 선 데이터로 만듭니다.
@@ -244,13 +284,18 @@ def show_history_chart(reactants, products, history):
         formula = substances[i][0]
         counts = []
 
+        # history는 단계별 행(row)으로 기록되어 있습니다.
+        # 그래프를 그리기 위해 같은 물질의 개수를 모든 행에서 모읍니다.
         for row in history:
             counts.append(row[i])
 
         # 예: chart_data['H2'] = [4, 2, 0]
+        # 화학식이 H2라면 H2의 단계별 개수 리스트를 해당 열에 연결합니다.
         chart_data[formula] = counts
 
     # 단계 열을 가로축으로 지정하면 나머지 물질 열마다 선 하나가 생깁니다.
+    # st.line_chart()는 저장된 개수 리스트를 선으로 연결하여 보여줍니다.
+    # 반응물 감소와 생성물 증가를 단계에 따라 비교할 수 있습니다.
     st.line_chart(
         chart_data,
         x="단계",
@@ -278,6 +323,8 @@ def show_result(reactants, products, history):
         return
 
     # 인덱스 -1은 리스트의 마지막 항목, 즉 최종 상태를 뜻합니다.
+    # 결과 분석은 마지막 단계의 분자 개수에만 근거합니다.
+    # 단계별 진행 과정은 위에서 별도의 표와 그래프로 확인합니다.
     final_counts = history[-1]
     # 소모된 물질, 부족한 물질, 남은 개수, 생성량을 따로 모읍니다.
     exhausted = []
@@ -292,10 +339,14 @@ def show_result(reactants, products, history):
         count = final_counts[i]
 
         # 0개라면 완전히 소모된 반응물입니다.
+        # 정확히 0개인 물질만 exhausted 목록에 기록합니다.
+        # 계수보다 적게 남은 물질 모두가 완전히 소모된 것은 아닙니다.
         if count == 0:
             exhausted.append(formula)
 
         # 0개가 아니어도 다음 반응에 필요한 계수보다 적으면 부족합니다.
+        # 남아 있는 양이 다음 한 단계의 필요량보다 작으면 부족한 상태입니다.
+        # 개수가 0이 아닌 반응물도 insufficient 목록에 포함될 수 있습니다.
         if count < coefficient:
             insufficient.append(formula)
 
@@ -306,10 +357,14 @@ def show_result(reactants, products, history):
     # 기록에서 생성물 개수는 반응물 개수들 다음 위치부터 시작합니다.
     for i in range(len(products)):
         formula = products[i][0]
+        # 생성물의 위치는 반응물 열 뒤에서 시작합니다.
+        # 예: 반응물이 2종이면 생성물의 첫 번째 값은 인덱스 2에 있습니다.
         count = final_counts[len(reactants) + i]
         created.append(formula + " " + str(count) + "개")
 
     # 한 물질만 소모되었는지, 여러 물질이 동시에 소모되었는지 구분합니다.
+    # 하나만 0개가 되었다면 그 물질 이름을 단독으로 출력합니다.
+    # 여러 종류가 동시에 0개가 된 경우에는 쉼표로 이어 출력합니다.
     if len(exhausted) == 1:
         st.write(exhausted[0] + "가 먼저 모두 소모되었습니다.")
     # join은 문자열 목록을 지정한 구분자(여기서는 쉼표와 공백)로 연결합니다.
@@ -346,6 +401,8 @@ def show_screen():
     st.title("화학 반응 시뮬레이터")
 
     # 파일에서 읽은 반응의 이름만 모아 선택 메뉴에 사용합니다.
+    # 파일 속 반응 정보를 읽는 작업과 화면에 보여주는 작업을 분리했습니다.
+    # 새로운 반응을 파일에 추가하면 이 목록을 통해 선택할 수 있습니다.
     reactions = read_reactions()
     reaction_names = []
 
@@ -354,6 +411,8 @@ def show_screen():
 
     # 선택한 이름의 위치를 찾아 그 반응의 전체 정보를 꺼냅니다.
     selected_name = st.sidebar.selectbox("반응 선택", reaction_names)
+    # index()는 사용자가 고른 이름이 반응 목록의 몇 번째인지 찾습니다.
+    # 같은 위치의 reactions 항목에서 반응식·종류·설명을 가져옵니다.
     selected_index = reaction_names.index(selected_name)
     selected_reaction = reactions[selected_index]
 
@@ -368,6 +427,8 @@ def show_screen():
     st.write("종류: " + selected_reaction[2])
     st.write("설명: " + selected_reaction[3])
 
+    # 이 리스트에는 반응물 종류 순서대로 입력한 초기 분자 수가 저장됩니다.
+    # 생성물은 사용자가 직접 입력하지 않고 반응 실행 시 0개로 시작합니다.
     reactant_counts = []
 
     # 반응물 종류마다 입력칸 하나를 만들고 같은 순서로 개수를 저장합니다.
@@ -383,6 +444,8 @@ def show_screen():
         reactant_counts.append(count)
 
     # 선택한 반응과 입력 개수를 새 리스트로 묶어 변경 여부를 비교합니다.
+    # 반응 이름과 반응식까지 비교 대상에 넣어 다른 반응을 골랐을 때도
+    # 이전 반응의 결과가 새 반응에 남아 있지 않도록 합니다.
     current_inputs = [selected_name, equation] + reactant_counts
 
     # session_state는 화면이 다시 실행되어도 값을 보관합니다.
@@ -390,10 +453,14 @@ def show_screen():
     if "previous_inputs" not in st.session_state:
         st.session_state.previous_inputs = []
 
+    # Streamlit은 숫자를 바꾸거나 버튼을 누르면 스크립트 전체를 다시 실행합니다.
+    # session_state가 없다면 계산이 끝난 기록을 화면에 유지하기 어렵습니다.
     if "history" not in st.session_state:
         st.session_state.history = []
 
     # 반응 또는 숫자가 달라졌으면 이전 결과를 지우고 새 입력을 기억합니다.
+    # 입력 조건을 조금이라도 바꾸면 기존 결과가 더 이상 해당 조건의 결과가
+    # 아니므로 history를 지우고 새로운 실행을 기다리도록 합니다.
     if current_inputs != st.session_state.previous_inputs:
         st.session_state.history = []
         st.session_state.previous_inputs = current_inputs
@@ -403,6 +470,8 @@ def show_screen():
     show_table("생성물", products)
 
     # 버튼을 누른 실행에서만 처음 입력값으로 전체 반응을 계산합니다.
+    # 실행 버튼을 눌렀을 때만 반응 계산을 시작합니다.
+    # 입력창 값을 변경하는 것만으로는 실제 반응을 계산하지 않습니다.
     if st.sidebar.button("실행"):
         product_counts = []
 
@@ -412,17 +481,24 @@ def show_screen():
 
         history = []
         # +로 새 리스트를 만들어 저장하므로 이후 개수 변경이 이전 기록에 영향을 주지 않습니다.
+        # 처음 기록에는 반응물의 입력 수와 생성물 0개가 차례대로 들어갑니다.
+        # 리스트를 +로 연결하면 기록용 새 리스트가 만들어집니다.
         history.append(reactant_counts + product_counts)
 
         # True일 때마다 한 단계 기록하고, False가 반환되면 반복을 끝냅니다.
+        # 매 반복에서 react_once()가 반응물을 줄이고 생성물을 늘립니다.
+        # 반응물이 모자라 False를 반환하면 while 반복이 자동으로 끝납니다.
         while react_once(reactant_counts, product_counts, parsed_reaction):
             # +로 새 리스트를 만들어 저장하므로 이후 개수 변경이 이전 기록에 영향을 주지 않습니다.
             history.append(reactant_counts + product_counts)
 
         # 전체 기록을 저장해 다음 화면 실행에서도 사용할 수 있도록 합니다.
+        # 반응을 계산한 모든 단계의 기록을 다음 화면 갱신까지 저장합니다.
         st.session_state.history = history
 
     # 결과 표시는 버튼 조건 밖에 두어 저장된 기록이 있으면 계속 보여 줍니다.
+    # 실행 기록이 있을 때만 변화 표·그래프·최종 분석 문장을 출력합니다.
+    # 사용자가 아직 실행하지 않았다면 이 결과 영역은 표시되지 않습니다.
     if len(st.session_state.history) > 0:
         show_history_table(
             reactants,
