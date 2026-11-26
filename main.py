@@ -2,7 +2,6 @@ import streamlit as st
 import os
 import base64
 from html import escape
-import re
 from pathlib import Path
 
 def read_reactions():
@@ -291,46 +290,28 @@ def show_history_table(reactants, products, history):
     st.markdown(table)
 
 
-def show_history_chart(reactants, products, history, colors):
-    """
-    단계별 분자 수를 물질마다 하나의 선으로 표시합니다.
+def show_change_table(reactants, products, history):
+    st.subheader("반응 전후 분자 수")
+    header = "| 분자 수(개) |"
+    divider = "| --- |"
+    before = "| 반응 전 |"
+    change = "| 변화량 |"
+    after = "| **반응 후** |"
 
-    입력: reactants와 products는 해석된 반응물 및 생성물 목록입니다.
-          history는 처음 상태부터 마지막 상태까지의 분자 수 기록입니다.
-    가로축은 단계, 세로축은 분자 수이며 선의 이름은 화학식입니다.
-    반환: 별도의 반환값 없이 화면에 선 그래프를 표시합니다.
-    """
-    st.subheader("단계별 분자 수 변화")
+    for i, substance in enumerate(reactants + products):
+        formula = substance[0].translate(str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉"))
+        first = history[0][i]
+        last = history[-1][i]
+        difference = last - first
+        sign = "+" if difference > 0 else ""
+        header += f" {formula} |"
+        divider += " ---: |"
+        before += f" {first} |"
+        change += f" {sign}{difference} |"
+        after += f" **{last}** |"
 
-    substances = reactants + products
-    points = []
-    for step, counts in enumerate(history):
-        for i, substance in enumerate(substances):
-            points.append({"단계": step, "분자 수": counts[i], "물질": substance[0]})
-
-    # 그래프 안쪽은 캔버스이므로 style.css에서 읽은 색을 직접 전달합니다.
-    st.vega_lite_chart(points, {
-        "background": colors["surface"],
-        "mark": {"type": "line", "point": True, "tooltip": True},
-        "encoding": {
-            "x": {"field": "단계", "type": "quantitative", "axis": {"tickMinStep": 1}},
-            "y": {"field": "분자 수", "type": "quantitative", "axis": {"tickMinStep": 1}},
-            "color": {"field": "물질", "type": "nominal", "legend": {"orient": "bottom"}}
-        },
-        "config": {
-            "font": "Pretendard, PretendardWeb, sans-serif",
-            "axis": {"labelColor": colors["text"], "titleColor": colors["highlight"],
-                     "gridColor": colors["border"], "domainColor": colors["border"]},
-            "legend": {"labelColor": colors["highlight"], "titleColor": colors["text"]},
-            "range": {"category": [colors["accent"], colors["highlight"], colors["chart-muted"],
-                                   colors["hover"], colors["text"]]},
-            "view": {"stroke": None}
-        }
-    }, use_container_width=True, theme=None)
-
-    # 처음 상태만 있으면 연결할 다음 점이 없어 변화하는 선이 생기지 않습니다.
-    if len(history) == 1:
-        st.caption("반응이 일어나지 않아 0단계 데이터만 있습니다.")
+    with st.container(key="reaction-summary"):
+        st.markdown("\n".join([header, divider, before, change, after]))
 
 
 def show_result(reactants, products, history):
@@ -342,17 +323,9 @@ def show_result(reactants, products, history):
     반응하지 못한 경우, 소모된 반응물, 남은 반응물, 생성량을 구분합니다.
     반환: 별도의 반환값 없이 화면에 결과 설명을 표시합니다.
     """
-    # 처음 상태만 기록되었다면 반응은 한 번도 일어나지 않은 것입니다.
-    if len(history) == 1:
-        st.write("반응물이 부족하여 반응하지 않았습니다")
-        return
-
-    # 인덱스 -1은 리스트의 마지막 항목, 즉 최종 상태를 뜻합니다.
     final_counts = history[-1]
-    # 소모된 물질, 부족한 물질, 남은 개수, 생성량을 따로 모읍니다.
-    exhausted = []
-    insufficient = []
     remaining = []
+    missing = []
     created = []
 
     # 마지막 상태에서 반응물별 남은 개수를 확인합니다.
@@ -361,13 +334,8 @@ def show_result(reactants, products, history):
         coefficient = reactants[i][1]
         count = final_counts[i]
 
-        # 0개라면 완전히 소모된 반응물입니다.
-        if count == 0:
-            exhausted.append(formula)
-
-        # 0개가 아니어도 다음 반응에 필요한 계수보다 적으면 부족합니다.
         if count < coefficient:
-            insufficient.append(formula)
+            missing.append(formula + " " + str(coefficient - count) + "개")
 
         # 남아 있는 반응물은 이름과 개수를 문장에 쓸 문자열로 만듭니다.
         if count > 0:
@@ -379,29 +347,16 @@ def show_result(reactants, products, history):
         count = final_counts[len(reactants) + i]
         created.append(formula + " " + str(count) + "개")
 
-    # 한 물질만 소모되었는지, 여러 물질이 동시에 소모되었는지 구분합니다.
-    if len(exhausted) == 1:
-        st.write(exhausted[0] + "가 먼저 모두 소모되었습니다.")
-    # join은 문자열 목록을 지정한 구분자(여기서는 쉼표와 공백)로 연결합니다.
-    elif len(exhausted) > 1:
-        st.write(", ".join(exhausted) + "가 동시에 모두 소모되었습니다.")
-    else:
-        st.write("완전히 소모된 반응물은 없습니다.")
+    if len(history) == 1:
+        st.write("반응하려면 " + ", ".join(missing) + " 더 필요합니다.")
+        return
 
-    st.write(
-        "다음 반응에 필요한 "
-        + ", ".join(insufficient)
-        + "의 개수가 부족하여 반응이 멈췄습니다."
-    )
-
+    st.html('<h2 class="reaction-result">' + escape(", ".join(created)) + ' 생성</h2>')
     # 남은 반응물이 있으면 이름과 개수를, 없으면 없다는 문장을 표시합니다.
     if len(remaining) > 0:
         st.write("남은 반응물은 " + ", ".join(remaining) + "입니다.")
     else:
         st.write("남은 반응물은 없습니다.")
-
-    # 생성물은 0개에서 시작했으므로 마지막 개수가 총 생성량입니다.
-    st.write("생성물은 " + ", ".join(created) + " 만들어졌습니다.")
 
 
 def delete_reaction(index):
@@ -453,7 +408,7 @@ def show_screen():
         return
 
     # 선택한 이름의 위치를 찾아 그 반응의 전체 정보를 꺼냅니다.
-    selected_name = st.sidebar.selectbox("반응 선택", reaction_names, key="selected_name")
+    selected_name = st.selectbox("반응 선택", reaction_names, key="selected_name")
     selected_index = reaction_names.index(selected_name)
     selected_reaction = reactions[selected_index]
     st.sidebar.button("선택한 반응 삭제", on_click=delete_reaction, args=(selected_index,))
@@ -465,17 +420,25 @@ def show_screen():
     products = parsed_reaction[1]
 
     # 파일에 저장된 반응식, 종류, 설명을 표시합니다.
-    st.write("반응식: " + equation)
-    st.write("종류: " + selected_reaction[2])
-    st.write("설명: " + selected_reaction[3])
+    sides = []
+    for side in parsed_reaction:
+        terms = []
+        for formula, coefficient in side:
+            term = formula.translate(str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉"))
+            if coefficient != 1:
+                term = str(coefficient) + term
+            terms.append(term)
+        sides.append(" + ".join(terms))
+    st.html('<h2 class="reaction-equation">' + escape(" → ".join(sides)) + '</h2>')
+    st.caption(" · ".join(filter(None, selected_reaction[2:])))
 
     reactant_counts = []
-
-    # 반응물 종류마다 입력칸 하나를 만들고 같은 순서로 개수를 저장합니다.
-    for reactant in reactants:
+    for i, reactant in enumerate(reactants):
+        if i % 2 == 0:
+            columns = st.columns(2)
         formula = reactant[0]
         # 최솟값과 처음 값은 0이며 증감 버튼은 1개씩 바꿉니다.
-        count = st.number_input(
+        count = columns[i % 2].number_input(
             formula + " 분자 수",
             min_value=0,
             value=0,
@@ -521,29 +484,17 @@ def show_screen():
 
     # 결과 표시는 버튼 조건 밖에 두어 저장된 기록이 있으면 계속 보여 줍니다.
     if len(st.session_state.history) > 0:
-        # 반응물과 생성물의 모형 표도 실행 후에만 표시합니다.
-        show_table("반응물", reactants)
-        show_table("생성물", products)
+        show_result(reactants, products, st.session_state.history)
+        show_change_table(reactants, products, st.session_state.history)
 
-        show_history_table(
-            reactants,
-            products,
-            st.session_state.history
-        )
-
-        # 표와 같은 저장 기록으로 그래프를 그리므로 결과가 함께 유지됩니다.
-        show_history_chart(
-            reactants,
-            products,
-            st.session_state.history,
-            dict(re.findall(r"--([\w-]+):\s*(#[0-9a-fA-F]{6});", css))
-        )
-
-        show_result(
-            reactants,
-            products,
-            st.session_state.history
-        )
+        with st.expander("단계별 수치 보기"):
+            show_history_table(reactants, products, st.session_state.history)
+        with st.expander("분자 모형과 계수 보기"):
+            left, right = st.columns(2)
+            with left:
+                show_table("반응물", reactants)
+            with right:
+                show_table("생성물", products)
 
 
 show_screen()
