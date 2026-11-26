@@ -14,7 +14,6 @@
     --highlight: #c9d3ee;
     --accent: #7c87f7;
     --hover: #98a4f7;
-    --chart-muted: #646e87;
     --border: #2f3547;
     --body-font: "Helvetica Now Text", Pretendard, PretendardWeb, "Malgun Gothic", sans-serif;
     --heading-font: "Helvetica Now Display", Pretendard, PretendardWeb, "Malgun Gothic", sans-serif;
@@ -38,7 +37,7 @@
     word-break: keep-all;
 }
 
-.stApp h1 { font-size: clamp(40px, 5vw, 53px); }
+.stApp h1 { font-size: 24px; }
 .stApp h2 { font-size: 40px; }
 .stApp h3 { font-size: 20px; }
 
@@ -118,7 +117,7 @@
 
 @media (max-width: 639px) {
     .stApp .block-container { padding-inline: 16px; }
-    .stApp h1 { font-size: 40px; }
+    .stApp h1 { font-size: 24px; }
     .stApp h2 { font-size: 32px; }
     .stApp [data-testid="stMain"] .stMarkdown p { font-size: 16px; }
     .stApp :is(button, input, summary, [data-baseweb="select"] > div) { min-height: 44px; }
@@ -138,4 +137,41 @@
 .molecule-table td { border-top: 1px solid var(--border); }
 .stApp :is(.molecule-table, .stMarkdown) th { background: #202432; color: var(--highlight); }
 .molecule-table img { display: block; height: 80px; max-width: 100%; object-fit: contain; }
-.stApp [data-testid="stVegaLiteChart"] { background: var(--surface); border-radius: 16px; padding: 8px; }
+
+.stApp .reaction-equation { font-size: 40px; }
+.stApp .reaction-result { color: var(--accent); font-size: 32px; }
+
+/* 반응 전후 표는 결과 영역 전체에 펼쳐 같은 물질의 수를 세로로 비교합니다. */
+.stApp .st-key-reaction-summary {
+    overflow-x: auto;
+    border-radius: 16px;
+    background: var(--surface);
+}
+
+.stApp .st-key-reaction-summary table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+}
+
+.stApp .st-key-reaction-summary :is(th, td) {
+    padding: 16px 24px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    text-align: center;
+    white-space: nowrap;
+    font-size: 20px;
+}
+
+.stApp .st-key-reaction-summary :is(th, td):first-child {
+    width: 24%;
+    color: var(--text);
+    text-align: left;
+    font-size: 16px;
+}
+
+.stApp .st-key-reaction-summary tbody tr:last-child td {
+    background: #202432;
+    border-bottom: 0;
+    color: var(--accent);
+}
